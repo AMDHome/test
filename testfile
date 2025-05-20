@@ -1,0 +1,23 @@
+function buildDecorations(view, diffResult, side) {
+    const builder = new RangeSetBuilder();
+    
+    for (const part of diffResult.lines) {
+        let lineNumber = (side === "left") ? part.aIndex : part.bIndex;
+        let oppositeNumber = (side === "left") ? part.bIndex : part.aIndex;
+
+        if (lineNumber >= 0 && oppositeNumber === -1) {
+            // Line exists on this side, but missing on opposite side
+            const line = view.state.doc.line(lineNumber + 1);
+            const className = (side === "left") ? "line-deleted" : "line-inserted";
+            builder.add(line.from, line.from, Decoration.line({class: className}));
+        } else if (lineNumber == -1 && oppositeNumber >= 0) {
+            // Line missing on this side
+            // Need to find a "phantom" line location to attach decoration
+            const linePos = guessLinePosition(view, oppositeNumber);
+            if (linePos !== null) {
+                builder.add(linePos, linePos, Decoration.line({class: "line-empty"}));
+            }
+        }
+    }
+    return builder.finish();
+}
