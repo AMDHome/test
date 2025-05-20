@@ -1,23 +1,47 @@
 function buildDecorations(view, diffResult, side) {
-    const builder = new RangeSetBuilder();
-    
-    for (const part of diffResult.lines) {
-        let lineNumber = (side === "left") ? part.aIndex : part.bIndex;
-        let oppositeNumber = (side === "left") ? part.bIndex : part.aIndex;
+    let builder = new RangeSetBuilder();
 
-        if (lineNumber >= 0 && oppositeNumber === -1) {
-            // Line exists on this side, but missing on opposite side
-            const line = view.state.doc.line(lineNumber + 1);
-            const className = (side === "left") ? "line-deleted" : "line-inserted";
-            builder.add(line.from, line.from, Decoration.line({class: className}));
-        } else if (lineNumber == -1 && oppositeNumber >= 0) {
-            // Line missing on this side
-            // Need to find a "phantom" line location to attach decoration
-            const linePos = guessLinePosition(view, oppositeNumber);
-            if (linePos !== null) {
-                builder.add(linePos, linePos, Decoration.line({class: "line-empty"}));
+    for (const part of diffResult.lines) {
+        const lineNumber = (side === "left") ? part.aIndex : part.bIndex;
+
+        if (lineNumber < 0) continue;
+
+        const line = view.state.doc.line(lineNumber + 1);
+
+        // Handle full-line insert/delete
+        if ((side === "left" && part.bIndex === -1) || (side === "right" && part.aIndex === -1)) {
+            const className = side === "left" ? "line-deleted" : "line-inserted";
+            builder.add(line.from, line.from, Decoration.line({ class: className }));
+            continue;
+        }
+
+        // If line exists in both but was changed, apply word diff
+        if (part.aIndex >= 0 && part.bIndex >= 0 && part.lineA !== part.lineB) {
+            const diffs = diffWords(part.lineA, part.lineB);
+            let pos = line.from;
+
+            for (const token of diffs) {
+                const len = token.value.length;
+
+                if (len === 0) continue;
+
+                const shouldMark =
+                    (side === "left" && token.removed) ||
+                    (side === "right" && token.added);
+
+                if (shouldMark) {
+                    builder.add(pos, pos + len, Decoration.mark({
+                        class: token.added ? "word-inserted" : "word-deleted"
+                    }));
+                }
+
+                // Only advance for non-removed tokens
+                if (!(side === "left" && token.added)) {
+                    pos += len;
+                }
             }
         }
     }
+
     return builder.finish();
 }
